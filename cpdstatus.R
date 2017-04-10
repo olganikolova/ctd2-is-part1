@@ -2,10 +2,10 @@
 # clinical status annotation
 
 options(stringsAsFactors = FALSE)
-setwd("Projects/CTDD/informer-set/")
+setwd("/fh/fast/kemp_c/olga_files/projects/informer_set/")
 require(webchem)
 require(synapseClient)
-synapseLogin()
+require(VennDiagram)
 
 INF <- read.delim(synGet("syn8049193")@filePath, sep="\t") # informer set
 names(INF) <- tolower(names(INF))
@@ -16,6 +16,8 @@ TMP_REMOVE <- !duplicated(INF$pubchem_cid)
 INF1 <- INF[TMP_REMOVE,]
 
 ANN <- read.delim(synGet("syn8049194")@filePath, sep = "\t") # clinical status annotation in CTRP
+# STR <- paste("CTRP", names(ANN), sep="_")
+# names(ANN) <- STR
 
 # Warning message:
 #   In createS4ObjectFromList(elem, listElementType) :
@@ -27,19 +29,12 @@ ANN <- read.delim(synGet("syn8049194")@filePath, sep = "\t") # clinical status a
 RES <- merge(INF1, ANN, by = "broad_cpd_id", all.x = TRUE)
 RES$pubchem_cid <- gsub("CID:","", RES$pubchem_cid)
 
-# retrieve available CAS identifiers from pub chem ids
-cas <- cts_convert(query = RES$pubchem_cid, from = 'PubChem CID', to = 'CAS')
-
-cas1 <- lapply(foo, function(STR){
-  return(paste(STR, collapse=";"))
-})
-
-RES$webchem_CAS <- do.call(rbind, cas1)
-
 # BRANCH 1 ===========================================================
 # mapping between pubchem_ids and inchi aquired from pubchem id mapper
+# this is a 2-column map only
 MAP <- read.delim(synGet("syn8049778")@filePath, sep="\t", header=F) 
 names(MAP) <- c("inchi", "pub_chem_id")
+MAP$pub_chem_id <- as.character(MAP$pub_chem_id)
 
 # subset by the informer set
 MAP1 <- unique(subset(MAP, pub_chem_id %in% RES$pubchem_cid)) # only 105 drugs could be mapped this way
@@ -50,17 +45,18 @@ RES1 <- merge(RES, MAP1, by.x = "pubchem_cid", by.y = "pub_chem_id", all.x = TRU
 # mapping between drug bank ids and inChI keys from drug bank
 # inchi keys not available for nutraceuticals!
 VOC <- read.delim(synGet("syn8049174")@filePath, sep=",")
-VOC1 <- unique(subset(VOC[,c("DrugBank.ID","CAS","Standard.InChI.Key")], Standard.InChI.Key != ""))
-names(VOC1) <- gsub("CAS", "DB_CAS", names(VOC1))
+VOC1 <- unique(subset(VOC[,c("DrugBank.ID","Standard.InChI.Key")], Standard.InChI.Key != ""))
 
 RES2 <- merge(RES1, VOC1, by.x = "inchi", by.y = "Standard.InChI.Key", all.x = TRUE)
 # 3081361 seems to have 2 different drug bank ids; leaving both in (total 319)
+# at the end, neither of those DrugBank ids ends up being status-annotated   <<======================= TODO
+# so could remove ither one to keep the pubchem ids unique
 
 # synapse query to get different cpd_status groups from drug bank
 q <- synQuery("select id, name from entity where entity.parentId=='syn8049148'")
 qq <- subset(q, entity.name %in% grep("_all", q$entity.name, value=T))
 
-# by cpd_status list of drug to targets
+# by cpd_status list of drug to targets from DrugBank
 DAT <- lapply(qq$entity.id, function(SID){
   # read in data
   D <- read.delim(synGet(SID)@filePath, sep=",")
@@ -116,7 +112,7 @@ DAT2 <- lapply(DAT, function(D){
 })
 
 do.call(sum, lapply(DAT2, length))
-[1] 48
+#[1] 48 # total drugs from DrugBank also included in ctd2-is
 
 # overlapping categories
 length(unique(unlist(DAT2)))
@@ -127,10 +123,10 @@ all <- unlist(DAT2)
 # > intersect(DAT2$investigational,DAT2$withdrawn)
 # [1] "DB00533" "DB01041"
 
-# are any of DB-annotated drugs help resolve
+# do any of DB-annotated drugs help resolve
 # drugs currently missing CTRP annotation?
 DAT3 <- lapply(1:length(DAT), function(IDX){
-  D <- DAT[[IDX]]
+  D <- DAT[[IDX]] # DrugBank compound category
   TMP <- subset(D, Drug.IDs %in% RES2$DrugBank.ID)
   names(TMP) <- paste("DB", names(TMP), sep="_")
   x <- merge(RES2, TMP, by.x = "DrugBank.ID", by.y = "DB_Drug.IDs")
@@ -144,39 +140,89 @@ write.table(RES3, file="ctd2is_additional_cps_status_annot_inchi.txt", sep="\t",
 
 nrow(subset(RES3, is.na(cpd_status) == T)) # total of 25 previously un-annotated compounds
 
-L3 <- split(RES3, RES3$pubchem_cid)
+# are there drugs with multiple clinical annotation classes?
+#L3 <- split(RES3, RES3$pubchem_cid)
+# 5 drugs appear to be
+# we will aggregate using the closest to approval status
 
-# # BRANCH 2 ===========================================================
-# # using CAS identifiers
-# 
-# INF_UN_CAS <- unique(unlist(cas))
-# VOC2 <- unique(subset(VOC, CAS %in% INF_UN_CAS)) # only 107
-# 
-# L4 <- lapply(RES$webchem_CAS, function(STR){
-#   L <- unlist(strsplit(STR,";"))
-#   return(paste(subset(VOC2, CAS %in% L)$DrugBank.ID, collapse=";"))
-# })
-# names(L4) <- RES$webchem_CAS
-# 
-# RES4 <- as.vector(do.call(cbind, L4))
-# names(RES4) <- names(L4)
-# RES5 <- RES4[RES4!=""]
-# RES6 <- data.frame(CAS = names(RES5),
-#                    DB_ID =RES5)
-# row.names(RES6) <- NULL
-# 
-# RES7 <- merge(subset(RES, webchem_CAS != ""), RES6, by.x = "webchem_CAS", by.y = "CAS")
-# 
-# DAT4 <- lapply(1:length(DAT), function(IDX){
-#   D <- DAT[[IDX]]
-#   IDS <- unlist(strsplit(RES6$DB_ID,";"))
-#   TMP <- subset(D, Drug.IDs %in% IDS)
-#   names(TMP) <- paste("DB", names(TMP), sep="_")
-#   
-#   
-#   
-#   x <- merge(RES7, TMP, by.x = "webchem_CAS", by.y = "DB_Drug.IDs")
-#   x$DB_cpd_status <- rep(names(DAT)[IDX], nrow(x))
-#   return(x)
-# })
-# names() <- names(DAT)
+# record all ctd2-is with additional DB annotation
+DAT4 <- lapply(1:length(DAT), function(IDX){
+  D <- DAT[[IDX]] # DrugBank compound category
+  TMP <- subset(D, Drug.IDs %in% RES2$DrugBank.ID)
+  names(TMP) <- paste("DB", names(TMP), sep="_")
+  TMP$DB_cpd_status <- rep(names(DAT)[IDX], nrow(TMP))
+  return(TMP)
+})
+names(DAT4) <- names(DAT)
+
+RES4 <- as.data.frame(do.call(rbind, DAT4))
+
+REMOVE <- which(duplicated(RES4$DB_Drug.IDs)) # removes 5 compounds
+RES5 <- RES4[-REMOVE,]
+
+RES6 <- merge(RES2, RES5, by.x = "DrugBank.ID", by.y = "DB_Drug.IDs", all.x = T)
+
+write.table(RES6, file="ctd2is_all_cps_status_annot_drugbank-inchi.txt", sep="\t",row.names=F)
+
+##### parsing selleck to see if we can adda annotation
+# read in fda selleck compounds
+# SELLECK <- read.delim(synGet("syn8646135")@filePath, sep="\t", header=T) # syn8646135 # FDA: syn8638067
+# SELLECK_MAP <- read.delim(synGet("syn8646137")@filePath, sep="\t", header=F) # syn8646137 # FDA: syn8642971
+
+SELLECK <- read.delim(synGet("syn8638067")@filePath, sep="\t", header=T) # syn8646135 # FDA: syn8638067
+SELLECK_MAP <- read.delim(synGet("syn8642971")@filePath, sep="\t", header=F) # syn8646137 # FDA: syn8642971
+
+names(SELLECK_MAP) <- c("product_id","pubchem_id")
+SELLECK_MAP$product_id <- gsub("_Selleck","",SELLECK_MAP$product_id)
+
+SELLECK_MAPPED <- merge(SELLECK, SELLECK_MAP, by.x = "Catalog.Number", by.y = "product_id") # 2661 x 23
+SELLECK_withPubchemIDs <- subset(SELLECK_MAPPED, is.na(pubchem_id) == FALSE) # 884 have pubchem id; 1777 do not
+
+
+length(intersect(as.integer(RES$pubchem_cid), SELLECK_MAPPED$pubchem_id)) # ALL: 99; FDA: 69
+
+# incorporate SELLECK results with results so far
+SELLECK_withPubchemIDs$pubchem_id <- as.character(SELLECK_withPubchemIDs$pubchem_id) 
+names(SELLECK_withPubchemIDs) <- paste("selleck", names(SELLECK_withPubchemIDs), sep="_")
+FIN <- merge(RES3, SELLECK_withPubchemIDs, by.x = "pubchem_cid", by.y = "selleck_pubchem_id")
+# write.table(FIN, file="ctd2is_additional_cps_status_annot_pubchme-inchi_selleck.txt",
+#             sep="\t", row.names = F, col.names = T, quote = F)
+
+write.table(FIN, file="ctd2is_additional_cps_status_annot_pubchme-inchi_selleck-fda.txt",
+            sep="\t", row.names = F, col.names = T, quote = F)
+
+FINAL <- merge(RES6, SELLECK_withPubchemIDs, by.x = "pubchem_cid", by.y = "selleck_pubchem_id", all.x = T)
+write.table(FINAL, file="ctd2is_all_cps_status_annot_pubchme-inchi_selleck-fda.txt",
+            sep="\t", row.names = F, col.names = T, quote = F)
+
+# counting up
+REMAIN1 <- subset(FINAL, is.na(cpd_status) == TRUE) # after CTRP: 188
+REMAIN2 <- subset(FINAL, is.na(cpd_status) == TRUE & is.na(DB_cpd_status) == TRUE) # after CTRP and DrugBank: 166 (gain 22)
+REMAIN3 <- subset(FINAL, is.na(cpd_status) == TRUE & is.na(DB_cpd_status) == TRUE & is.na(selleck_STATUS) == TRUE) # after CTRP and DrugBank and Selleck:144 (gain 22)
+
+REMAIN4 <- subset(FINAL, is.na(DB_cpd_status) == TRUE) # after DrugBank: 276 (gain 43)
+REMAIN5 <- subset(FINAL, is.na(selleck_STATUS) == TRUE) # after Selleck: 249 (gain 70)
+
+length(intersect(REMAIN1$pubchem_cid, as.character(SELLECK_MAPPED$pubchem_id))) # ALL=47; FDA=30 new labeled compounds
+length(intersect(REMAIN1$pubchem_cid, as.character(RES3$pubchem_cid))) 
+
+m_ctrp <- unique(subset(FINAL, is.na(cpd_status) == F)$pubchem_cid) # 130
+m_db <- unique(subset(FINAL, is.na(DB_cpd_status) == F)$pubchem_cid) # 43
+m_sell <- unique(subset(FINAL, is.na(selleck_STATUS) == F)$pubchem_cid) # 69
+ctd2 <- unique(FINAL$pubchem_cid)
+
+length(intersect(m_ctrp,m_db)) # 21
+length(intersect(m_ctrp, m_sell)) # 39
+length(intersect(m_db, m_sell)) # 19
+length(Reduce(intersect, list(m_ctrp, m_db, m_sell))) # 11
+
+ids <- list(CTRP=m_ctrp,
+            DrugBank=m_db,
+            SelleckFDA=m_sell,
+            CTD2=ctd2)
+
+png("integrated_cpd_clinical_status.png")
+grid.draw(venn.diagram(ids, filename=NULL, 
+                       fill = c("red", "green", "blue", "yellow"), 
+                       alpha = c(0.5, 0.5,0.5, 0.5)))
+dev.off()
