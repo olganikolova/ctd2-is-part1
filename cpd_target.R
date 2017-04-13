@@ -71,23 +71,21 @@ INF1 <- INF[TMP_REMOVE,]
 # integrate stitch data
 SCH <- read.delim(synGet("syn8360870")@filePath, sep="\t")
 SCH$chemical <- get_numeric_pubchem_id(SCH$chemical)
-SCH_SUB <- subset(SCH, chemical %in% INF1$pubchem_cid ) # 84,989 pairs for 268 unique drugs
+SCH_SUB <- unique(subset(SCH, chemical %in% INF1$pubchem_cid )) # 54,927 pairs for 268 unique drugs
 #SCH_SUB1 <- SCH_SUB[grep("9606.", SCH_SUB$protein),]
 SCH_SUB$protein <- gsub("9606.","",SCH_SUB$protein)
 
 mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
 qq <- getBM(filters= "ensembl_peptide_id", attributes= c("ensembl_peptide_id","hgnc_symbol"), values=unique(SCH_SUB$protein), mart= mart)
 
-SCH_SUB2 <- merge(SCH_SUB, qq, by.x = "protein", by.y = "ensembl_peptide_id", all.x = T) # 84989
+SCH_SUB2 <- merge(SCH_SUB, qq, by.x = "protein", by.y = "ensembl_peptide_id", all.x = T) # 54,927
 
-SCH_FIN <- subset(SCH_SUB2[,c("chemical","protein","hgnc_symbol","combined_score")], is.na(hgnc_symbol) == F) # 81758
-
-SCH_FIN_UN <- unique(SCH_FIN) # 52845; 12710 unique proteins
+SCH_FIN <- unique(subset(SCH_SUB2[,c("chemical","protein","hgnc_symbol","combined_score")], is.na(hgnc_symbol) == F) )# 52,845; 12710 unique proteins
 
 # gprofiler on all targets 
-# inboth <- intersect(unique(SCH_FIN_UN$hgnc_sym), LIB_GENES)
+# inboth <- intersect(unique(SCH_FIN$hgnc_sym), LIB_GENES)
 
-TARG <- gprofiler(unique(SCH_FIN_UN$hgnc_symbol), 
+TARG <- gprofiler(unique(SCH_FIN$hgnc_symbol), 
                   #custom_bg=LIB_GENES, 
                   ordered_query=F,
                   correction_method="fdr",
@@ -109,19 +107,19 @@ file <- synStore(file)
 # prep for cytoscape visualization
 
 ### (1) Drug and target, scored
-write.table(SCH_FIN_UN, file="results/strich_chem_protein_for_cytoscape.tsv", sep="\t", col.names=T, row.names=F, quote=F)
+write.table(SCH_FIN, file="results/strich_chem_protein_for_cytoscape.tsv", sep="\t", col.names=T, row.names=F, quote=F)
 file <- File("results/strich_chem_protein_for_cytoscape.tsv", parentId = "syn8367102")
 file <- synStore(file)
 
 png("results/cpr_target_score_dn_stitch.png")
-hist(SCH_FIN_UN$combined_score,col="grey", 
+hist(SCH_FIN$combined_score,col="grey", 
      main="STITCH compound-target score distribution",
      xlab="score", ylab="count")
 dev.off()
 file <- File("results/cpr_target_score_dn_stitch.png", parentId = "syn8367102")
 file <- synStore(file)
 
-part <- subset(SCH_FIN_UN, combined_score > 600)
+part <- subset(SCH_FIN, combined_score > 600)
 write.table(part, file="results/strich_chem_protein_for_cytoscape_part.tsv", sep="\t", col.names=T, row.names=F, quote=F)
 file <- File("results/strich_chem_protein_for_cytoscape_part.tsv", parentId = "syn8367102")
 file <- synStore(file)
