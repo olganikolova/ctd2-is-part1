@@ -7,10 +7,6 @@ require(synapseClient)
 source("code/get_numeric_pubchem_id.R")
 require("gProfileR")
 require('biomaRt')
-#source("code/awesome_visualization.R")
-#require(pvclust) 
-#require(ComplexHeatmap)
-#require(circlize)
 
 #================================================
 # (1) enrichment analysis for targets annotated 

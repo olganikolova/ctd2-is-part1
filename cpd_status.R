@@ -16,8 +16,6 @@ TMP_REMOVE <- !duplicated(INF$pubchem_cid)
 INF1 <- INF[TMP_REMOVE,]
 
 ANN <- read.delim(synGet("syn8049194")@filePath, sep = "\t") # clinical status annotation in CTRP
-# STR <- paste("CTRP", names(ANN), sep="_")
-# names(ANN) <- STR
 
 # Warning message:
 #   In createS4ObjectFromList(elem, listElementType) :
@@ -185,14 +183,14 @@ length(intersect(as.integer(RES$pubchem_cid), SELLECK_MAPPED$pubchem_id)) # ALL:
 SELLECK_withPubchemIDs$pubchem_id <- as.character(SELLECK_withPubchemIDs$pubchem_id) 
 names(SELLECK_withPubchemIDs) <- paste("selleck", names(SELLECK_withPubchemIDs), sep="_")
 FIN <- merge(RES3, SELLECK_withPubchemIDs, by.x = "pubchem_cid", by.y = "selleck_pubchem_id")
-# write.table(FIN, file="ctd2is_additional_cps_status_annot_pubchme-inchi_selleck.txt",
+# write.table(FIN, file="ctd2is_additional_cps_status_annot_punchem-inchi_selleck.txt",
 #             sep="\t", row.names = F, col.names = T, quote = F)
 
-write.table(FIN, file="ctd2is_additional_cps_status_annot_pubchme-inchi_selleck-fda.txt",
+write.table(FIN, file="ctd2is_additional_cps_status_annot_punchem-inchi_selleck-fda.txt",
             sep="\t", row.names = F, col.names = T, quote = F)
 
 FINAL <- merge(RES6, SELLECK_withPubchemIDs, by.x = "pubchem_cid", by.y = "selleck_pubchem_id", all.x = T)
-write.table(FINAL, file="ctd2is_all_cps_status_annot_pubchme-inchi_selleck-fda.txt",
+write.table(FINAL, file="ctd2is_all_cps_status_annot_punchem-inchi_selleck-fda.txt",
             sep="\t", row.names = F, col.names = T, quote = F)
 
 # counting up

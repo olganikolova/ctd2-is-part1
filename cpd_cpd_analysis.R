@@ -1,5 +1,5 @@
 # informer set
-# drug to drug distance analysis using stich data
+# drug to drug distance analysis using stitch data
 
 options(stringsAsFactors = FALSE)
 setwd("/fh/fast/kemp_c/olga_files/projects/informer_set/")
